@@ -1081,7 +1081,7 @@ input.addEventListener('keydown', e => {
 // canvasをクリックするとゲームにフォーカスが行く（Ctrl+Z をゲームで動かすとき便利）
 canvas.addEventListener('click', ()=> canvas.focus());
 
-let zoomLevel = 1;
+let zoomLevel = 0.75;
 const zoomWrapper = document.getElementById("zoomWrapper");
 const zoomStep = 0.1;
 const minZoom = 0.6;
@@ -1104,6 +1104,20 @@ document.getElementById("zoomOut").addEventListener("click", () => {
 });
 
 applyZoom();
+
+document.addEventListener("keydown", (e) => {
+  if (e.code === "KeyG") {
+    const googleSearch = document.querySelector(".google-search");
+    if (googleSearch) {
+      // トグル（表示／非表示）
+      if (googleSearch.style.display === "none") {
+        googleSearch.style.display = "";
+      } else {
+        googleSearch.style.display = "none";
+      }
+    }
+  }
+});
 
 </script>
 </body>
