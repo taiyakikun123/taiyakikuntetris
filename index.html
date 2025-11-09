@@ -203,8 +203,8 @@ const VISIBLE_ROWS = 20;
 const CELL = 36;            // 盤面1マスのピクセル（360x720）
 const GRAVITY_FPS = 60;     // タイマー基準
 const GRAVITY = 1/60;       // 1G=1/60 per frame (調整可)
-const SOFT_DROP_FACTOR = 30;// ソフトドロップ速度倍
-const LOCK_DELAY_MS = 180;  // ロック猶予
+const SOFT_DROP_FACTOR = 35;// ソフトドロップ速度倍
+const LOCK_DELAY_MS = 200;  // ロック猶予
 const DAS_MS = 100;         // DAS
 const ARR_MS = 0;           // ARR
 const ARE_MS = 0;           // 次湧き時間
@@ -1118,6 +1118,181 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+/* ===== 完全版：Lキー1.5秒長押しで完全操作ロック／解除（左縦ゲージ） ===== */
+let lKeyDownTime = 0;
+let lHeld = false;
+let lockActive = false;
+let barEl = null;
+let barFill = null;
+
+function createLockBar() {
+  if (!barEl) {
+    barEl = document.createElement("div");
+    barEl.style.position = "fixed";
+    barEl.style.left = "0";
+    barEl.style.top = "0";
+    barEl.style.width = "10px";
+    barEl.style.height = "100vh";
+    barEl.style.background = "rgba(255,255,255,0.08)";
+    barEl.style.borderRight = "1px solid rgba(255,255,255,0.2)";
+    barEl.style.zIndex = "9999";
+    barEl.style.overflow = "hidden";
+    document.body.appendChild(barEl);
+
+    barFill = document.createElement("div");
+    barFill.style.position = "absolute";
+    barFill.style.left = "0";
+    barFill.style.bottom = "0";
+    barFill.style.width = "100%";
+    barFill.style.height = "0%";
+    barFill.style.background = "rgba(0,150,255,0.7)";
+    barFill.style.transition = "height 0.06s linear";
+    barEl.appendChild(barFill);
+  }
+}
+
+/* ---- キャプチャで先取りするグローバルインターセプタ ----
+   ロック中は Lキー以外の keydown/keyup を全て止める（他のハンドラに届かない）。
+   capture:true により既存のハンドラより先に処理されます。 */
+window.addEventListener('keydown', function(e){
+  // LキーはロックON/OFFのために通す（ただし自分の処理は下にある別ハンドラで）
+  if (e.code === 'KeyL') {
+    // ここでは阻止しない。L用の専用ハンドラで prevent をしているため問題なし。
+    return;
+  }
+  if (lockActive) {
+    e.preventDefault();
+    e.stopImmediatePropagation(); // 他のハンドラに渡さない
+    return;
+  }
+}, {capture: true, passive: false});
+
+window.addEventListener('keyup', function(e){
+  if (e.code === 'KeyL') return;
+  if (lockActive) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+}, {capture: true, passive: false});
+
+/* ---- Lキー専用のロックトリガ（keydown/keyupは通常フェーズで処理） ---- */
+document.addEventListener("keydown", function(e){
+  if (e.code === "KeyL" && !lHeld) {
+    lHeld = true;
+    lKeyDownTime = performance.now();
+    createLockBar();
+    // Lキー押し始めはここで止めておく（誤反応防止）
+    e.preventDefault();
+    e.stopPropagation();
+  }
+});
+
+document.addEventListener("keyup", function(e){
+  if (e.code === "KeyL") {
+    // 押しっぱなしを解除したらチャージをリセット（まだ満タンでなければ）
+    lHeld = false;
+    lKeyDownTime = 0;
+    if (barFill) barFill.style.height = "0%";
+    e.preventDefault();
+    e.stopPropagation();
+  }
+});
+
+/* ---- ロック時に既存のキー状態・繰り返し状態を即クリアする補助 ---- */
+function clearInputStateOnLock() {
+  // keys オブジェクトが既存コードにある前提
+  if (typeof keys !== 'undefined') {
+    keys.left = keys.right = keys.soft = keys.rotateR = keys.rotateL = keys.hold = keys.hard = false;
+  }
+  if (typeof repeatState !== 'undefined') {
+    repeatState.active = false;
+    repeatState.started = false;
+    repeatState.dir = 0;
+    repeatState.lastTime = 0;
+  }
+}
+
+/* ---- 主要操作関数保護（外部どこから呼ばれても安全にするため） ----
+   既存の moveX / rotate / holdAction / hardDrop / moveDown 関数の先頭に
+   これらのガードを入れておけばどこから呼んでも操作を受け付けない。 
+   もし既に同名関数があるなら、ファイル内の定義の直後に下の wrapper を置いて上書きしてください。
+*/
+if (typeof moveX === 'function') {
+  const _moveX = moveX;
+  moveX = function(dir){
+    if (lockActive) return false;
+    return _moveX(dir);
+  };
+}
+if (typeof moveDown === 'function') {
+  const _moveDown = moveDown;
+  moveDown = function(n=1){
+    if (lockActive) return false;
+    return _moveDown(n);
+  };
+}
+if (typeof rotate === 'function') {
+  const _rotate = rotate;
+  rotate = function(delta){
+    if (lockActive) return false;
+    return _rotate(delta);
+  };
+}
+if (typeof holdAction === 'function') {
+  const _holdAction = holdAction;
+  holdAction = function(){
+    if (lockActive) return;
+    return _holdAction();
+  };
+}
+if (typeof hardDrop === 'function') {
+  const _hardDrop = hardDrop;
+  hardDrop = function(){
+    if (lockActive) return;
+    return _hardDrop();
+  };
+}
+
+/* ---- ロックの更新（1.5秒） ---- */
+function updateLock(dt) {
+  if (lHeld && lKeyDownTime > 0) {
+    const held = performance.now() - lKeyDownTime;
+    const progress = Math.min(held / 1500, 1); // 1.5秒
+    if (barFill) barFill.style.height = `${progress * 100}%`;
+
+    if (held >= 1500) {
+      // トグル
+      lockActive = !lockActive;
+
+      // ロックON時：入力状態を即クリアして誤動作防止
+      if (lockActive) {
+        clearInputStateOnLock();
+      }
+
+      // L押し状態をリセットして再トリガーを防ぐ
+      lHeld = false;
+      lKeyDownTime = 0;
+      if (barFill) barFill.style.height = "0%";
+
+      showTempMessage(lockActive ? "Locked" : "Unlocked", 1000);
+    }
+  }
+}
+
+/* ---- ゲームループに組み込む（既存 update をラップ） ---- */
+if (typeof update === 'function') {
+  const originalUpdate = update;
+  update = function(dt) {
+    updateLock(dt);
+    if (lockActive) {
+      // ロック中はゲームの更新（移動・回転・落下など）を完全スキップして安全にする
+      return;
+    }
+    originalUpdate(dt);
+  };
+}
+
 
 </script>
 </body>
