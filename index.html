@@ -1231,10 +1231,10 @@ function showLockMessage(msg) {
 function updateLock(dt) {
   if (lHeld && lKeyDownTime > 0) {
     const held = performance.now() - lKeyDownTime;
-    const progress = Math.min(held / 1500, 1);
+    const progress = Math.min(held / 1000, 1);
     if (barFill) barFill.style.height = `${progress * 100}%`;
 
-    if (held >= 1500) {
+    if (held >= 1000) {
       lockActive = !lockActive;
       if (lockActive) clearInputStateOnLock();
       lHeld = false;
