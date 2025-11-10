@@ -1119,7 +1119,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-/*以下ロック処理*/
+/* ======== ロック処理（Lキー1.5秒長押しでトグル） ======== */
 
 let lKeyDownTime = 0;
 let lHeld = false;
@@ -1128,6 +1128,7 @@ let barEl = null;
 let barFill = null;
 let lockMsgTimer = null;
 
+/* ---- 左のバー生成 ---- */
 function createLockBar() {
   if (!barEl) {
     barEl = document.createElement("div");
@@ -1154,54 +1155,33 @@ function createLockBar() {
   }
 }
 
-/* ---- キャプチャで入力制御 ---- */
-window.addEventListener(
-  "keydown",
-  (e) => {
+/* ---- キー入力ブロック処理（keydown / keyup 統合） ---- */
+["keydown", "keyup"].forEach(type => {
+  window.addEventListener(type, (e) => {
     const ae = document.activeElement;
     const isSearchInput =
-      ae &&
-      ae.tagName === "INPUT" &&
-      ae.closest(".search-input");
+      ae && ae.tagName === "INPUT" && ae.closest(".search-input");
 
     // Lは通す（ロックトグル用）
     if (e.code === "KeyL") return;
 
-    // 検索欄フォーカス中ならゲーム操作無効
+    // 検索欄フォーカス中ならゲーム操作無効（Enterは許可）
     if (isSearchInput) {
-      e.stopImmediatePropagation(); // Tetrisのkeydownをブロック
+      if (e.code !== "Enter") {
+        e.stopImmediatePropagation(); // Tetrisのkeydownをブロック
+        if (type === "keyup") e.preventDefault();
+      }
       return;
     }
 
-    // ロック中も同様に止める
+    // ロック中もすべての入力を止める
     if (lockActive) {
       e.preventDefault();
       e.stopImmediatePropagation();
       return;
     }
-  },
-  { capture: true, passive: false }
-);
-
-window.addEventListener(
-  "keyup",
-  (e) => {
-    const ae = document.activeElement;
-    const isSearchInput =
-      ae &&
-      ae.tagName === "INPUT" &&
-      ae.closest(".search-input");
-
-    if (e.code === "KeyL") return;
-
-    if (isSearchInput || lockActive) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
-    }
-  },
-  { capture: true, passive: false }
-);
+  }, { capture: true, passive: false });
+});
 
 /* ---- Lキー専用トリガ ---- */
 document.addEventListener("keydown", (e) => {
@@ -1224,10 +1204,11 @@ document.addEventListener("keyup", (e) => {
   }
 });
 
-/* ---- 入力状態リセット ---- */
+/* ---- 入力状態クリア ---- */
 function clearInputStateOnLock() {
   if (typeof keys !== "undefined") {
-    keys.left = keys.right = keys.soft = keys.rotateR = keys.rotateL = keys.hold = keys.hard = false;
+    keys.left = keys.right = keys.soft = keys.rotateR =
+    keys.rotateL = keys.hold = keys.hard = false;
   }
   if (typeof repeatState !== "undefined") {
     repeatState.active = false;
@@ -1237,7 +1218,7 @@ function clearInputStateOnLock() {
   }
 }
 
-/* ---- 消えるロックメッセージ ---- */
+/* ---- Locked / Unlocked メッセージ（1.5秒で消える） ---- */
 function showLockMessage(msg) {
   showTempMessage(msg, 1500);
   if (lockMsgTimer) clearTimeout(lockMsgTimer);
@@ -1264,7 +1245,7 @@ function updateLock(dt) {
   }
 }
 
-/* ---- ゲームループに組み込み ---- */
+/* ---- ゲームループに統合 ---- */
 if (typeof update === "function") {
   const originalUpdate = update;
   update = function (dt) {
