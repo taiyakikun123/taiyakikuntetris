@@ -1255,6 +1255,77 @@ if (typeof update === "function") {
   };
 }
 
+
+/* ======== フィールド（10x20）を動かす演出（Hold/Next/Googleは固定） ======== */
+const SHAKE_NORMAL = 3;
+const SHAKE_WALL = 8;
+const DROP_SHIMMY = 10;
+const ROT_TILT_ANGLE = 2;
+const INTERP_FAST = 0.16;
+const INTERP_SLOW = 0.10;
+
+let fldX = 0, fldY = 0, fldR = 0;
+let tgtX = 0, tgtY = 0, tgtR = 0;
+
+const _moveX = moveX;
+const _hardDrop = hardDrop;
+const _rotate = rotate;
+
+moveX = function(dir) {
+  const moved = _moveX(dir);
+  if (moved) tgtX = dir * SHAKE_NORMAL;
+  else tgtX = dir * SHAKE_WALL;
+  return moved;
+};
+
+hardDrop = function() {
+  tgtY = DROP_SHIMMY;
+  return _hardDrop();
+};
+
+rotate = function(delta) {
+  const ok = _rotate(delta);
+  if (ok && cur && cur.lastRotationKick) {
+    const k = cur.lastRotationKick;
+    let sign = 1;
+    if (k.x && k.x !== 0) sign = Math.sign(k.x);
+    else if (k.y && k.y !== 0) sign = Math.sign(k.y);
+    tgtR = sign * ROT_TILT_ANGLE;
+  }
+  return ok;
+};
+
+function lerp(current, target, f) {
+  return current + (target - current) * f;
+}
+
+const originalDraw = draw;
+draw = function() {
+  fldX = lerp(fldX, tgtX, INTERP_FAST);
+  fldY = lerp(fldY, tgtY, INTERP_FAST);
+  fldR = lerp(fldR, tgtR, INTERP_SLOW);
+  tgtX *= 0.78;
+  tgtY *= 0.78;
+  tgtR *= 0.7;
+
+  const zoomWrapper = document.getElementById("zoomWrapper");
+  if (zoomWrapper) {
+    zoomWrapper.style.transition = "transform 0.05s linear";
+    zoomWrapper.style.transformOrigin = "top center";
+
+    // Hold / Next / Google 検索以外（盤面部分のみ）を揺らす
+    const gameCanvas = document.getElementById("game");
+    if (gameCanvas) {
+      const cx = fldX;
+      const cy = fldY;
+      const rot = fldR;
+      gameCanvas.style.transition = "transform 0.05s linear";
+      gameCanvas.style.transform = `translate(${cx}px, ${cy}px) rotate(${rot}deg)`;
+    }
+  }
+  originalDraw();
+};
+
 </script>
 </body>
 </html>
